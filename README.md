@@ -136,6 +136,16 @@ pnpm dev                    # runs core (:4000) + surface-web (:5173) via turbo
 No database is required for local dev — leave `SUPABASE_URL` unset and
 everything runs in memory, exactly like before persistence was added.
 
+### Testing across devices with no deploy at all
+
+Both dev servers bind `0.0.0.0`, not just localhost, so a phone on the
+same wifi as the laptop can reach them directly — no Railway/Vercel/GitHub
+Pages needed for this. Find the laptop's LAN IP (`hostname -I` on Linux,
+or `ipconfig`/System Settings elsewhere) and open
+`http://<lan-ip>:5173` from the phone's browser. This is the fastest way
+to test the actual multi-device "wow moment" (doc §24) before anything is
+deployed anywhere.
+
 Health check: `curl http://localhost:4000/health`.
 
 Run the doc §9 scenario end to end (works with or without `OPENAI_API_KEY`

@@ -1,3 +1,5 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -7,8 +9,14 @@ import { VitePWA } from "vite-plugin-pwa";
 // (server.ts serving this at the root) keeps the default "/".
 const basePath = process.env.VITE_BASE_PATH || "/";
 
+// Vite only reads .env files from its own project root (apps/surface-web/)
+// by default — the repo-root `.env` the README tells you to create
+// wouldn't be picked up otherwise (same gap fixed in apps/core/src/index.ts).
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
 export default defineConfig({
   base: basePath,
+  envDir: repoRoot,
   plugins: [
     react(),
     VitePWA({
@@ -50,5 +58,9 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // Binds 0.0.0.0, not just localhost — a phone on the same wifi as the
+    // laptop can open http://<laptop-lan-ip>:5173 directly, no deploy
+    // needed. Core already does this too (Fastify's default host).
+    host: true,
   },
 });

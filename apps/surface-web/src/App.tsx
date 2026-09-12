@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { SurfacePresentation, WorkGraphSnapshot } from "@pulse/context-schema";
 
-const CORE_HTTP_URL = import.meta.env.VITE_CORE_HTTP_URL ?? "http://localhost:4000";
-const CORE_WS_URL = import.meta.env.VITE_CORE_WS_URL ?? "ws://localhost:4000/ws";
+// Explicit env vars win (needed when the surface is hosted separately from
+// the Core, e.g. GitHub Pages/Vercel talking to a Railway/Render Core).
+// Otherwise assume same-origin — the single-deploy setup (server.ts serves
+// this build itself) — so the same build works unmodified whether it's
+// opened as localhost, a LAN IP from a phone on the same wifi, or a real
+// domain, with no URL baked in at build time to get wrong.
+const CORE_HTTP_URL = import.meta.env.VITE_CORE_HTTP_URL || window.location.origin;
+const CORE_WS_URL =
+  import.meta.env.VITE_CORE_WS_URL ||
+  `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
 const PROTOTYPE_IDENTITY_ID = "prototype-identity";
 
 type ConnectionState = "connecting" | "online" | "offline";
