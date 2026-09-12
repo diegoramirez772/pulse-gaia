@@ -7,6 +7,7 @@ import { getDecision, saveDecision } from "../agent-core/decisions.js";
 import { workGraphMemory } from "../agent-core/memory.js";
 import { present, presentActionResult } from "../agent-surface/index.js";
 import { eventBus } from "../event-bus/index.js";
+import { isCapabilityAllowed } from "../context-firewall/index.js";
 
 const confirmBodySchema = z.object({ deviceId: z.string().default("unknown") });
 
@@ -22,6 +23,11 @@ export async function decisionRoutes(app: FastifyInstance) {
     if (!decision) return reply.code(404).send({ error: "decision not found" });
     if (decision.kind !== "ASK_PERMISSION") {
       return reply.code(409).send({ error: `decision is ${decision.kind}, expected ASK_PERMISSION` });
+    }
+
+    const { deviceId } = confirmBodySchema.parse(req.body ?? {});
+    if (!isCapabilityAllowed(deviceId, "message.prepare")) {
+      return reply.code(403).send({ error: "message.prepare is not granted for this device" });
     }
 
     const draftedText = await draftMessage(decision, workGraphMemory.snapshot());
@@ -50,6 +56,17 @@ export async function decisionRoutes(app: FastifyInstance) {
 
     const { deviceId } = confirmBodySchema.parse(req.body ?? {});
     const capabilityKey = decision.proposedCapabilityId ?? "message.send";
+
+    if (!isCapabilityAllowed(deviceId, capabilityKey)) {
+      logAction({
+        decisionId: decision.id,
+        capabilityKey,
+        deviceId,
+        result: "denied",
+        detail: "Denied by context firewall: capability is not granted for this device.",
+      });
+      return reply.code(403).send({ error: `${capabilityKey} is not granted for this device` });
+    }
 
     logAction({
       decisionId: decision.id,

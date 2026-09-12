@@ -18,23 +18,26 @@ export async function eventRoutes(app: FastifyInstance) {
   app.post("/events/android", async (req, reply) => {
     const body = incomingEventSchema.parse(req.body);
     const event = normalizeAndroidEvent(body);
-    eventBus.publish(event);
-    reply.send(await handleEvent(event));
+    const result = await handleEvent(event);
+    if (!result.skipped) eventBus.publish(event);
+    reply.send(result);
   });
 
   app.post("/events/windows", async (req, reply) => {
     const body = incomingEventSchema.parse(req.body);
     const event = normalizeWindowsEvent(body);
-    eventBus.publish(event);
-    reply.send(await handleEvent(event));
+    const result = await handleEvent(event);
+    if (!result.skipped) eventBus.publish(event);
+    reply.send(result);
   });
 
   // The Agent Surface's own text input (doc §8) — see adapters/web.ts.
   app.post("/events/web", async (req, reply) => {
     const body = incomingEventSchema.parse(req.body);
     const event = normalizeWebEvent(body);
-    eventBus.publish(event);
-    reply.send(await handleEvent(event));
+    const result = await handleEvent(event);
+    if (!result.skipped) eventBus.publish(event);
+    reply.send(result);
   });
 
   // Demo helper (doc §21): lets the Agent Surface show the Work Graph live.

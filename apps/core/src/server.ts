@@ -2,6 +2,7 @@ import websocketPlugin from "@fastify/websocket";
 import Fastify from "fastify";
 import { registerDefaultCapabilities } from "./agent-core/tools.js";
 import { decisionRoutes } from "./routes/decisions.js";
+import { deviceRoutes } from "./routes/devices.js";
 import { eventRoutes } from "./routes/events.js";
 import { healthRoutes } from "./routes/health.js";
 import { wsRoutes } from "./routes/ws.js";
@@ -13,6 +14,7 @@ export async function buildServer() {
 
   await app.register(websocketPlugin);
   await app.register(healthRoutes);
+  await app.register(deviceRoutes);
   await app.register(eventRoutes);
   await app.register(decisionRoutes);
   await app.register(wsRoutes);

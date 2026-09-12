@@ -73,8 +73,11 @@ mocked responses) — this is the exact demo script from the master doc:
 **Deliberately still stub or deferred**, and why that's fine for a
 hackathon (doc §22, §25 explicitly allow this):
 
-- `context-firewall/isAllowed` — always `true`; real per-device permission
-  checks against `DevicePermissionGrant` need identity/auth to exist first.
+- **Context Firewall** — real, in-memory per-device grants. It starts
+  deny-by-default: `POST /devices/:deviceId/grants` explicitly grants or
+  revokes a capability, and both incoming context and simulated actions are
+  checked. This is intentionally not durable or multi-user until identity and
+  storage exist; restart the Core and re-grant permissions.
 - Identity (`agent-core/identity.ts`) — single hardcoded prototype user, no
   real multi-user auth.
 - Android/Windows adapters — normalization functions + HTTP routes only
@@ -113,6 +116,13 @@ Run the doc §9 scenario end to end (works with or without `OPENAI_API_KEY`
 — the heuristic fallback reproduces it deterministically):
 
 ```bash
+# 0) Explicitly allow the minimum context and action capabilities for this
+# demo. Omit or revoke any one of these grants to see the Firewall deny it.
+curl -X POST http://localhost:4000/devices/pc-diego/grants -H 'content-type: application/json' -d '{"capabilityKey":"android.notifications.read","granted":true}'
+curl -X POST http://localhost:4000/devices/pc-diego/grants -H 'content-type: application/json' -d '{"capabilityKey":"windows.activity.read","granted":true}'
+curl -X POST http://localhost:4000/devices/telefono-diego/grants -H 'content-type: application/json' -d '{"capabilityKey":"message.prepare","granted":true}'
+curl -X POST http://localhost:4000/devices/telefono-diego/grants -H 'content-type: application/json' -d '{"capabilityKey":"message.send","granted":true}'
+
 # 1) Carlos asks for something, with a deadline
 curl -X POST http://localhost:4000/events/android -H 'content-type: application/json' -d '{
   "agentIdentityId":"prototype-identity","deviceId":"pc-diego","kind":"message.received",
