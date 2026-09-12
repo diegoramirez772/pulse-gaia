@@ -1,8 +1,9 @@
 import type { FastifyRequest } from "fastify";
-import { verifyHandeiaToken } from "../handeia-auth.js";
+import { verifyHandoffToken, type IdentityPlatform } from "../handeia-auth.js";
 import { PROTOTYPE_IDENTITY_ID } from "./identity.js";
 
 export const IDENTITY_COOKIE = "pulse_identity_token";
+export const PLATFORM_COOKIE = "pulse_identity_platform";
 
 /**
  * Resolves the real agentIdentityId for a browser-originated request by
@@ -22,7 +23,8 @@ export async function resolveAgentIdentityId(req: FastifyRequest, fallback?: str
   const secret = process.env.HANDEIA_CAPABILITY_KEY_SECRET;
 
   if (token && secret) {
-    const claims = await verifyHandeiaToken(token, secret);
+    const platform = (req.cookies?.[PLATFORM_COOKIE] === "GANDIA" ? "GANDIA" : "HANDEIA") as IdentityPlatform;
+    const claims = await verifyHandoffToken(token, secret, platform);
     if (claims) return claims.sub;
   }
 

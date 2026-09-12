@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentIdentity, LinkedDevice } from "@pulse/context-schema";
 import { hasSupabase, supabase } from "../db/supabase.js";
-import type { HandeiaClaims } from "../handeia-auth.js";
+import type { HandoffClaims } from "../handeia-auth.js";
 
 /**
  * Identity across every linked device (doc §16-17): "the user is not
@@ -54,8 +54,12 @@ export async function getPrototypeIdentity(): Promise<AgentIdentity> {
   });
 }
 
-/** Resolves (and persists) the real identity behind a verified Handeia token. */
-export async function resolveIdentityFromHandeia(claims: HandeiaClaims): Promise<AgentIdentity> {
+/**
+ * Resolves (and persists) the real identity behind a verified handoff
+ * token — from either launcher, Handeia (personal) or Gandia
+ * (institutional). `sub` is the agentIdentityId either way.
+ */
+export async function resolveIdentityFromHandoff(claims: HandoffClaims): Promise<AgentIdentity> {
   return upsertIdentity({
     id: claims.sub,
     ownerEmail: claims.email ?? "",
