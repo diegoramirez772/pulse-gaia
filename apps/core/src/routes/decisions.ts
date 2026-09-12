@@ -4,7 +4,7 @@ import { z } from "zod";
 import { draftMessage } from "../agent-core/actions.js";
 import { logAction, listActions } from "../agent-core/action-log.js";
 import { getDecision, saveDecision } from "../agent-core/decisions.js";
-import { resolveAgentIdentityId } from "../agent-core/session.js";
+import { requireAgentIdentityId } from "../agent-core/session.js";
 import * as workGraph from "../agent-core/memory.js";
 import { present, presentActionResult } from "../agent-surface/index.js";
 import { eventBus } from "../event-bus/index.js";
@@ -32,7 +32,8 @@ export async function decisionRoutes(app: FastifyInstance) {
     }
 
     const body = confirmBodySchema.parse(req.body ?? {});
-    const agentIdentityId = await resolveAgentIdentityId(req, body.agentIdentityId);
+    const agentIdentityId = await requireAgentIdentityId(req, reply, body.agentIdentityId);
+    if (!agentIdentityId) return;
     if (!(await isCapabilityAllowed(agentIdentityId, body.deviceId, "message.prepare"))) {
       return reply.code(403).send({ error: "message.prepare is not granted for this device" });
     }
@@ -63,7 +64,8 @@ export async function decisionRoutes(app: FastifyInstance) {
     }
 
     const body = confirmBodySchema.parse(req.body ?? {});
-    const agentIdentityId = await resolveAgentIdentityId(req, body.agentIdentityId);
+    const agentIdentityId = await requireAgentIdentityId(req, reply, body.agentIdentityId);
+    if (!agentIdentityId) return;
     const capabilityKey = decision.proposedCapabilityId ?? "message.send";
 
     if (!(await isCapabilityAllowed(agentIdentityId, body.deviceId, capabilityKey))) {
@@ -103,7 +105,9 @@ export async function decisionRoutes(app: FastifyInstance) {
     reply.send({ ok: true, presentation });
   });
 
-  app.get<{ Querystring: { agentIdentityId?: string } }>("/action-log", async (req) =>
-    listActions(await resolveAgentIdentityId(req, req.query.agentIdentityId)),
-  );
+  app.get<{ Querystring: { agentIdentityId?: string } }>("/action-log", async (req, reply) => {
+    const agentIdentityId = await requireAgentIdentityId(req, reply, req.query.agentIdentityId);
+    if (!agentIdentityId) return;
+    return listActions(agentIdentityId);
+  });
 }

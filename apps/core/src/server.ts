@@ -6,6 +6,7 @@ import staticPlugin from "@fastify/static";
 import websocketPlugin from "@fastify/websocket";
 import Fastify from "fastify";
 import { registerDefaultCapabilities } from "./agent-core/tools.js";
+import { rateLimited } from "./rate-limit.js";
 import { authRoutes } from "./routes/auth.js";
 import { decisionRoutes } from "./routes/decisions.js";
 import { deviceRoutes } from "./routes/devices.js";
@@ -53,6 +54,12 @@ export async function buildServer() {
     }
 
     if (request.method === "OPTIONS") return reply.code(204).send();
+
+    // Static assets are served from the same origin and shouldn't count
+    // against the API budget; everything else does.
+    if (request.url.startsWith("/api") || !request.url.includes(".")) {
+      if (rateLimited(request, reply)) return reply;
+    }
   });
 
   await app.register(cookiePlugin);

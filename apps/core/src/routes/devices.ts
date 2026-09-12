@@ -5,12 +5,13 @@ import {
   listGrantedCapabilities,
   revokeCapability,
 } from "../context-firewall/index.js";
-import { getIdentity, PROTOTYPE_IDENTITY_ID } from "../agent-core/identity.js";
+import { getIdentity } from "../agent-core/identity.js";
+import { requireAgentIdentityId } from "../agent-core/session.js";
 
 const grantBodySchema = z.object({
   capabilityKey: z.string().min(1),
   granted: z.boolean(),
-  agentIdentityId: z.string().default(PROTOTYPE_IDENTITY_ID),
+  agentIdentityId: z.string().optional(),
 });
 
 /**
@@ -19,8 +20,11 @@ const grantBodySchema = z.object({
  * context-firewall/index.ts for the Supabase/in-memory persistence.
  */
 export async function deviceRoutes(app: FastifyInstance) {
-  app.post<{ Params: { deviceId: string } }>("/devices/:deviceId/grants", async (req) => {
-    const { capabilityKey, granted, agentIdentityId } = grantBodySchema.parse(req.body);
+  app.post<{ Params: { deviceId: string } }>("/devices/:deviceId/grants", async (req, reply) => {
+    const body = grantBodySchema.parse(req.body);
+    const { capabilityKey, granted } = body;
+    const agentIdentityId = await requireAgentIdentityId(req, reply, body.agentIdentityId);
+    if (!agentIdentityId) return;
 
     // device_capability_grants.agent_identity_id is a FK — make sure the
     // parent row exists (matters for a brand-new identity granting itself
@@ -40,9 +44,13 @@ export async function deviceRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { deviceId: string }; Querystring: { agentIdentityId?: string } }>(
     "/devices/:deviceId/grants",
-    async (req) => ({
-      deviceId: req.params.deviceId,
-      grants: await listGrantedCapabilities(req.query.agentIdentityId ?? PROTOTYPE_IDENTITY_ID, req.params.deviceId),
-    }),
+    async (req, reply) => {
+      const agentIdentityId = await requireAgentIdentityId(req, reply, req.query.agentIdentityId);
+      if (!agentIdentityId) return;
+      return {
+        deviceId: req.params.deviceId,
+        grants: await listGrantedCapabilities(agentIdentityId, req.params.deviceId),
+      };
+    },
   );
 }
