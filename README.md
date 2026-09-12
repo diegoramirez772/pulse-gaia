@@ -138,11 +138,26 @@ everything runs in memory, exactly like before persistence was added.
 
 ### Testing across devices with no deploy at all
 
-Both dev servers bind `0.0.0.0`, not just localhost, so a phone on the
-same wifi as the laptop can reach them directly — no Railway/Vercel/GitHub
-Pages needed for this. Find the laptop's LAN IP (`hostname -I` on Linux,
-or `ipconfig`/System Settings elsewhere) and open
-`http://<lan-ip>:5173` from the phone's browser. This is the fastest way
+`pnpm dev`'s split servers (:5173 + :4000) are fine for testing on the
+laptop itself, but **not** from a phone: `VITE_CORE_HTTP_URL=http://localhost:4000`
+in `.env` means "localhost" from the *phone's* point of view (itself, not
+the laptop) — the surface would load but every Core call would fail.
+
+For a phone on the same wifi, use the combined production build instead —
+one origin, no localhost trap, because the surface then falls back to
+`window.location.origin` (see `App.tsx`) instead of a baked-in URL:
+
+```bash
+# In .env, leave VITE_CORE_HTTP_URL and VITE_CORE_WS_URL BLANK for this
+# (only set them when the surface and Core are on genuinely different
+# origins, e.g. GitHub Pages talking to a separate Railway Core).
+pnpm build
+node apps/core/dist/index.js
+```
+
+Both bind `0.0.0.0`, not just localhost. Find the laptop's LAN IP
+(`hostname -I` on Linux, `ipconfig`/System Settings elsewhere) and open
+`http://<lan-ip>:4000` from the phone's browser — this is the fastest way
 to test the actual multi-device "wow moment" (doc §24) before anything is
 deployed anywhere.
 
