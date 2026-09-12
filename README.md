@@ -32,7 +32,7 @@ Recuperar → Filtrar → Razonar → Decidir → Presentar → Actuar → Regis
 ```
 apps/
   core/          Agent Core — Fastify + WebSocket (TypeScript/Node)
-  surface-web/   Agent Surface prototype — React + Vite (TypeScript)
+  surface-web/   Agent Surface prototype — React + Vite (TypeScript), installable PWA
 packages/
   context-schema/  Shared types: events, entities/relations (Work Graph),
                    decisions, capabilities/permissions, surface presentations
@@ -63,6 +63,17 @@ during the build:
   — no real multi-user auth.
 - Android/Windows adapters are normalization functions + HTTP routes only
   (`POST /events/android`, `POST /events/windows`) — no native clients.
+
+`surface-web` itself is a real, installable PWA (manifest + service worker
+via `vite-plugin-pwa`, icons in `public/`), not a stub: `pnpm build` emits
+`sw.js`/`manifest.webmanifest` and it installs on desktop/Android/iOS home
+screens. The doc (§16) frames the web surface as something the user
+"installs" and links to their identity per device — a PWA is the natural
+fit for that without an app-store round trip. Placeholder icons only
+(dark bg, green pulse mark) — swap `public/icon-*.png` for real branding
+whenever that exists. `GET /health` and `GET /work-graph` are cached
+network-first so the surface still shows last-known state on a flaky
+connection; `POST /events/*` is never cached.
 
 Nothing here fakes data or pretends to be more finished than it is; every
 stub above says so at the call site.
