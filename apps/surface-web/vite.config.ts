@@ -2,7 +2,13 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Overridden to "/pulse-gaia/" when built for GitHub Pages (see
+// .github/workflows/pages.yml) — the Docker/Railway single-origin deploy
+// (server.ts serving this at the root) keeps the default "/".
+const basePath = process.env.VITE_BASE_PATH || "/";
+
 export default defineConfig({
+  base: basePath,
   plugins: [
     react(),
     VitePWA({
@@ -12,7 +18,8 @@ export default defineConfig({
         name: "PULSE Agent Surface",
         short_name: "PULSE",
         description: "The context layer for proactive AI — Agent Surface",
-        start_url: "/",
+        start_url: basePath,
+        scope: basePath,
         display: "standalone",
         background_color: "#0b0c10",
         theme_color: "#0b0c10",
