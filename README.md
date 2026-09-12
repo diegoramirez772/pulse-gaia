@@ -155,6 +155,35 @@ Firing step 1 from one browser tab/device and watching step 2's card
 appear on a second tab connected to the same `/ws` is the multi-device
 "wow moment" from doc §24.
 
+## Deploying the demo
+
+The repository is ready for a split deploy: deploy the root `Dockerfile` as
+the Core on Railway or Render, then deploy the root project to Vercel (the
+included `vercel.json` builds `apps/surface-web`). This needs the owner's
+Railway/Render and Vercel accounts; no hosted service is created by this repo.
+
+Set these variables on the **Core** service:
+
+```bash
+OPENAI_API_KEY=                 # optional; fallback remains deterministic without it
+CORS_ORIGIN=https://<surface>.vercel.app
+PORT=4000                       # Railway/Render normally provide this themselves
+```
+
+Set these build-time variables on the **Vercel** project, replacing the
+domains with the deployed Core's public HTTPS URL:
+
+```bash
+VITE_CORE_HTTP_URL=https://<core-domain>
+VITE_CORE_WS_URL=wss://<core-domain>/ws
+```
+
+After deployment, open `<core-domain>/health`, install the Vercel PWA on the
+phone, and run the four grant calls plus the scenario above against the Core
+domain. The Core's `CORS_ORIGIN` must exactly match the PWA origin. This is
+the required live-device validation step; it cannot be represented by two
+local browser tabs.
+
 Postgres runs locally via `docker-compose.yml` for now; `DATABASE_URL` in
 `.env.example` also accepts a Supabase connection string directly, but no
 Supabase project has been provisioned — creating one is a separate,

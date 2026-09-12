@@ -1,0 +1,7 @@
+node_modules
+.turbo
+.git
+.env
+apps/surface-web
+docs
+adapters
