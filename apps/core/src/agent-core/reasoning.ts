@@ -112,7 +112,7 @@ async function decideWithOpenAI(
  * because the two halves of the scenario routinely arrive as separate
  * events (Carlos's message, then the PR status, in either order).
  */
-function decideWithHeuristics(
+export function decideWithHeuristics(
   newEntities: ContextEntity[],
   newRelations: ContextRelation[],
   graph: WorkGraphSnapshot,

@@ -175,7 +175,7 @@ function extractWithHeuristics(event: RawContextEvent): {
  * real-world thing is mentioned again, so "Proyecto Atlas" stays one node
  * across events instead of forking the graph.
  */
-function resolve(
+export function resolve(
   draft: { entities: DraftEntity[]; relations: DraftRelation[] },
   graph: WorkGraphSnapshot,
   event: RawContextEvent,
