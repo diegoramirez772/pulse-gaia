@@ -1,4 +1,0 @@
-{
-  "buildCommand": "pnpm --filter @pulse/surface-web build",
-  "outputDirectory": "apps/surface-web/dist"
-}
