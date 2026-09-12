@@ -115,7 +115,27 @@ body {
   background: #2a2d34;
   border-radius: 10px;
   padding: 0 0.75rem;
+  cursor: pointer;
+}
+
+.surface-card form button:disabled {
   cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.surface-card form button.listening {
+  background: #e5484d;
+  animation: pulse-listening 1.2s ease-in-out infinite;
+}
+
+.voice-status {
+  margin: 0.5rem 0 0;
+  color: #9aa0aa;
+  font-size: 0.75rem;
+}
+
+@keyframes pulse-listening {
+  50% { transform: scale(1.05); }
 }
 
 .surface-card footer {

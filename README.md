@@ -84,8 +84,11 @@ hackathon (doc §22, §25 explicitly allow this):
   (`POST /events/android`, `POST /events/windows`, `POST /events/web`), no
   native clients. The doc's own guidance: demo real depth on one path,
   present the rest as extensible architecture.
-- Voice input — the surface has a mic button, disabled; text input works
-  and posts through `POST /events/web`.
+- **Voice input and playback** — real browser-native Web Speech API in the
+  PWA: the mic posts a recognized transcript through `POST /events/web`, and
+  an arriving WebSocket presentation is spoken aloud. It degrades visibly on
+  browsers without `SpeechRecognition`; browser/platform voice availability
+  is outside PULSE's control.
 - `message.send` doesn't hit a real email/Slack API — it's simulated
   (logged + written into the Work Graph). The doc explicitly says not to
   promise full device/account access for the hackathon.

@@ -7,6 +7,38 @@ const AGENT_IDENTITY_ID = "prototype-identity";
 
 type ConnectionState = "connecting" | "online" | "offline";
 
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  0: { transcript: string };
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface BrowserSpeechRecognition {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  start(): void;
+  abort(): void;
+}
+
+interface BrowserSpeechRecognitionConstructor {
+  new (): BrowserSpeechRecognition;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  }
+}
+
 function getDeviceId(): string {
   try {
     const existing = localStorage.getItem("pulse-device-id");
@@ -32,7 +64,13 @@ export function App() {
   const [presentation, setPresentation] = useState<SurfacePresentation | null>(null);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const deviceIdRef = useRef(getDeviceId());
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+
+  const speechRecognitionSupported =
+    typeof window !== "undefined" && Boolean(window.SpeechRecognition ?? window.webkitSpeechRecognition);
 
   useEffect(() => {
     fetch(`${CORE_HTTP_URL}/health`)
@@ -44,7 +82,10 @@ export function App() {
     ws.onerror = () => setCoreStatus("offline");
     ws.onmessage = (msg) => {
       const parsed = JSON.parse(msg.data);
-      if (parsed.type === "presentation") setPresentation(parsed.presentation);
+      if (parsed.type === "presentation") {
+        setPresentation(parsed.presentation);
+        speakPresentation(parsed.presentation);
+      }
       if (parsed.type === "context-event") refreshWorkGraph();
     };
 
@@ -61,28 +102,72 @@ export function App() {
     return () => {
       ws.close();
       clearInterval(poll);
+      recognitionRef.current?.abort();
+      window.speechSynthesis?.cancel();
     };
   }, []);
 
-  async function submitDraft(e: React.FormEvent) {
-    e.preventDefault();
-    if (!draft.trim()) return;
+  function speakPresentation(nextPresentation: SurfacePresentation) {
+    if (!("speechSynthesis" in window)) return;
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(nextPresentation.headline);
+    utterance.lang = navigator.language || "es-MX";
+    window.speechSynthesis.speak(utterance);
+  }
+
+  async function sendInput(text: string, kind: "manual.note" | "voice.transcript") {
     setBusy(true);
+    setVoiceStatus(null);
     try {
-      await fetch(`${CORE_HTTP_URL}/events/web`, {
+      const res = await fetch(`${CORE_HTTP_URL}/events/web`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           agentIdentityId: AGENT_IDENTITY_ID,
           deviceId: deviceIdRef.current,
-          kind: "manual.note",
-          payload: { text: draft },
+          kind,
+          payload: { text },
         }),
       });
+      if (!res.ok) throw new Error("El Agent Core rechazó la entrada. Revisa el permiso web.context.write.");
       setDraft("");
+    } catch (error) {
+      setVoiceStatus(error instanceof Error ? error.message : "No se pudo enviar la entrada.");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitDraft(e: React.FormEvent) {
+    e.preventDefault();
+    if (!draft.trim()) return;
+    await sendInput(draft.trim(), "manual.note");
+  }
+
+  function startListening() {
+    const SpeechRecognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!SpeechRecognition || isListening || busy) return;
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = navigator.language || "es-MX";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const result = event.results[event.resultIndex];
+      if (!result?.isFinal) return;
+      const transcript = result[0].transcript.trim();
+      if (transcript) void sendInput(transcript, "voice.transcript");
+    };
+    recognition.onerror = (event) => {
+      setVoiceStatus(`No pude escuchar (${event.error}).`);
+    };
+    recognition.onend = () => setIsListening(false);
+
+    setVoiceStatus("Escuchando…");
+    setIsListening(true);
+    recognition.start();
   }
 
   async function runAction(capabilityKey?: string) {
@@ -139,10 +224,17 @@ export function App() {
             placeholder="Ask the agent, or say what you're doing…"
             disabled={busy}
           />
-          <button type="button" title="Voice input — not wired yet" disabled>
+          <button
+            className={isListening ? "listening" : ""}
+            type="button"
+            title={speechRecognitionSupported ? "Hablar con PULSE" : "Tu navegador no soporta reconocimiento de voz"}
+            onClick={startListening}
+            disabled={busy || !speechRecognitionSupported}
+          >
             🎙
           </button>
         </form>
+        {voiceStatus && <p className="voice-status" role="status">{voiceStatus}</p>}
 
         <footer>
           <span>Work Graph: {workGraph?.entities.length ?? 0} entities</span>
