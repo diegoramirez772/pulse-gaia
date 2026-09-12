@@ -51,9 +51,49 @@ body {
   background: #f5a623;
 }
 
+.device-id {
+  margin-left: auto;
+  font-family: ui-monospace, monospace;
+  opacity: 0.6;
+}
+
 .headline {
-  margin: 0.75rem 0;
+  margin: 0.75rem 0 0.25rem;
   font-size: 1rem;
+}
+
+.body-text {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: #b8bcc4;
+}
+
+.action-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.action-row button {
+  flex: 1;
+  border: none;
+  background: #3ddc84;
+  color: #0b0c10;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+
+.action-row button:last-child {
+  background: #2a2d34;
+  color: inherit;
+  font-weight: 400;
+}
+
+.action-row button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .surface-card form {
@@ -70,7 +110,7 @@ body {
   color: inherit;
 }
 
-.surface-card button {
+.surface-card form button {
   border: none;
   background: #2a2d34;
   border-radius: 10px;
@@ -85,11 +125,4 @@ body {
   gap: 0.5rem;
   font-size: 0.75rem;
   color: #6b7280;
-}
-
-.pulse-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3ddc84;
 }

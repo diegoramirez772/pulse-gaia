@@ -18,3 +18,24 @@ export function getCapability(key: string): Capability | undefined {
 export function listCapabilities(): Capability[] {
   return [...registry.values()];
 }
+
+/**
+ * The two capabilities the demo scenario (doc §9) actually exercises.
+ * Both are simulated — they log to action-log.ts and update the Work
+ * Graph, they don't hit a real email/Slack API — see actions.ts and the
+ * README for why that's an explicit, stated limitation for the hackathon.
+ */
+export function registerDefaultCapabilities() {
+  registerCapability({
+    id: "message.prepare",
+    key: "message.prepare",
+    description: "Draft a message to unblock a pending task, for the user to review before sending.",
+    requiresConfirmation: false,
+  });
+  registerCapability({
+    id: "message.send",
+    key: "message.send",
+    description: "Send a previously drafted message once the user confirms.",
+    requiresConfirmation: true,
+  });
+}

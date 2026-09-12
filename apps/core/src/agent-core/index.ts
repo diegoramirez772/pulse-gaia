@@ -3,13 +3,16 @@ import { isAllowed, minimize } from "../context-firewall/index.js";
 import { extract } from "../context-engine/index.js";
 import { workGraphMemory } from "./memory.js";
 import { decide } from "./reasoning.js";
+import { saveDecision } from "./decisions.js";
 import { present } from "../agent-surface/index.js";
+import { eventBus } from "../event-bus/index.js";
 
 /**
  * The full response cycle (doc §10):
  * Detectar → Entender/Recuperar → Filtrar → Razonar → Decidir → Presentar → Actuar → Registrar.
- * "Actuar" (dispatching to an OS Adapter) is intentionally not wired yet —
- * every decision today ends at "Presentar".
+ * "Actuar" happens later, out of band, when the user confirms a card's
+ * action (see routes/decisions.ts) — a decision reaching EXECUTE here
+ * doesn't self-execute, it still waits on that confirmation.
  */
 export async function handleEvent(event: RawContextEvent) {
   if (!isAllowed(event)) {
@@ -18,12 +21,16 @@ export async function handleEvent(event: RawContextEvent) {
 
   const safeEvent = { ...event, payload: minimize(event.payload) };
 
-  const { entities, relations } = extract(safeEvent);
+  const priorGraph = workGraphMemory.snapshot();
+  const { entities, relations } = await extract(safeEvent, priorGraph);
   workGraphMemory.addEntities(entities);
   workGraphMemory.addRelations(relations);
 
-  const decision = await decide(safeEvent, entities);
+  const decision = await decide(safeEvent, entities, relations, priorGraph);
+  saveDecision(decision);
+
   const presentation = present(decision);
+  eventBus.publishPresentation(presentation);
 
   return { skipped: false as const, decision, presentation };
 }

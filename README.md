@@ -43,37 +43,57 @@ docs/
   master-doc.md  The full concept document
 ```
 
-## Status: setup only, no reasoning logic yet
+## Status: the doc §9 scenario runs for real, end to end
 
-This pass got the whole scaffold installed and wired end-to-end (server
-boots, WS broadcasts, surface connects, workspace builds) but deliberately
-stopped short of the real logic. Stubbed on purpose, ready to fill in
-during the build:
+The full response cycle is implemented and was smoke-tested live (no
+mocked responses) — this is the exact demo script from the master doc:
 
-- `context-engine/extract` — turns a raw event into one placeholder entity;
-  real NLU/LLM extraction into the Work Graph is next.
-- `context-firewall/isAllowed` — always returns `true`; real permission
-  checks against `DevicePermissionGrant` come once identity/auth exists.
-- `agent-core/reasoning.decide` — always returns `NO_ACTION`; the OpenAI
-  client is instantiated and ready, the actual reasoning/tool-use loop
-  is not.
-- `agent-surface/present` — always renders a `card`; voice/action/
-  conversation selection is not implemented.
-- Identity (`agent-core/identity.ts`) is a single hardcoded prototype user
-  — no real multi-user auth.
-- Android/Windows adapters are normalization functions + HTTP routes only
-  (`POST /events/android`, `POST /events/windows`) — no native clients.
+- **Context Engine** (`context-engine/extract`) — real: OpenAI structured
+  extraction into the Work Graph when `OPENAI_API_KEY` is set, otherwise a
+  deterministic reading of an explicit payload contract
+  (`text`, `from`, `projectRef`, `taskRef`, `taskStatus` — see
+  `routes/events.ts`). Either path resolves labels against the existing
+  graph first, so "Proyecto Atlas" stays one node across events instead of
+  forking. **Fallback only, not yet real:** free-text NLU without an API
+  key — the heuristic path needs those explicit fields.
+- **Reasoning** (`agent-core/reasoning.decide`) — real: OpenAI reasons over
+  the whole Work Graph (not just the latest event) when a key is present;
+  the fallback heuristic reproduces the doc's exact scenario — a person
+  waiting on something (`espera` relation) plus a task elsewhere in the
+  graph that's pending/blocked — deterministically, no model call needed.
+- **Agent Surface** (`agent-surface/present`) — real: picks card/text/action
+  by decision kind, with real action buttons wired to real endpoints.
+- **Action loop** — real: `POST /decisions/:id/prepare` drafts a message
+  (OpenAI or a template, `agent-core/actions.ts`), `POST /decisions/:id/execute`
+  runs it, logs to `GET /action-log`, and writes the result back into the
+  Work Graph — the "Revisar" → "Confirmar y enviar" flow from doc §9.
+- **Multi-device sync** — real: every decision's presentation is broadcast
+  over `/ws` to every connected surface, not just the one that triggered it.
 
-`surface-web` itself is a real, installable PWA (manifest + service worker
-via `vite-plugin-pwa`, icons in `public/`), not a stub: `pnpm build` emits
+**Deliberately still stub or deferred**, and why that's fine for a
+hackathon (doc §22, §25 explicitly allow this):
+
+- `context-firewall/isAllowed` — always `true`; real per-device permission
+  checks against `DevicePermissionGrant` need identity/auth to exist first.
+- Identity (`agent-core/identity.ts`) — single hardcoded prototype user, no
+  real multi-user auth.
+- Android/Windows adapters — normalization functions + HTTP routes only
+  (`POST /events/android`, `POST /events/windows`, `POST /events/web`), no
+  native clients. The doc's own guidance: demo real depth on one path,
+  present the rest as extensible architecture.
+- Voice input — the surface has a mic button, disabled; text input works
+  and posts through `POST /events/web`.
+- `message.send` doesn't hit a real email/Slack API — it's simulated
+  (logged + written into the Work Graph). The doc explicitly says not to
+  promise full device/account access for the hackathon.
+
+`surface-web` is a real, installable PWA (manifest + service worker via
+`vite-plugin-pwa`, icons in `public/`): `pnpm build` emits
 `sw.js`/`manifest.webmanifest` and it installs on desktop/Android/iOS home
-screens. The doc (§16) frames the web surface as something the user
-"installs" and links to their identity per device — a PWA is the natural
-fit for that without an app-store round trip. Placeholder icons only
-(dark bg, green pulse mark) — swap `public/icon-*.png` for real branding
-whenever that exists. `GET /health` and `GET /work-graph` are cached
-network-first so the surface still shows last-known state on a flaky
-connection; `POST /events/*` is never cached.
+screens. Placeholder icons only (dark bg, green pulse mark) — swap
+`public/icon-*.png` for real branding whenever that exists. `GET /health`
+and `GET /work-graph` are cached network-first so the surface still shows
+last-known state on a flaky connection; every `POST` is never cached.
 
 Nothing here fakes data or pretends to be more finished than it is; every
 stub above says so at the call site.
@@ -88,7 +108,39 @@ pnpm dev                    # runs core (:4000) + surface-web (:5173) via turbo
 ```
 
 Health check: `curl http://localhost:4000/health`.
-Feed a fake event: `curl -X POST http://localhost:4000/events/android -H 'content-type: application/json' -d '{"agentIdentityId":"prototype-identity","deviceId":"demo-android","kind":"notification.received","payload":{"text":"¿Mañana me pasas la API?"}}'`.
+
+Run the doc §9 scenario end to end (works with or without `OPENAI_API_KEY`
+— the heuristic fallback reproduces it deterministically):
+
+```bash
+# 1) Carlos asks for something, with a deadline
+curl -X POST http://localhost:4000/events/android -H 'content-type: application/json' -d '{
+  "agentIdentityId":"prototype-identity","deviceId":"pc-diego","kind":"message.received",
+  "payload":{"from":"Carlos","text":"¿Mañana me pasas la API?","projectRef":"Proyecto Atlas"}
+}'
+# -> decision.kind: INFORM
+
+# 2) a PR in the same project shows up pending/blocked
+curl -X POST http://localhost:4000/events/windows -H 'content-type: application/json' -d '{
+  "agentIdentityId":"prototype-identity","deviceId":"pc-diego","kind":"task.status",
+  "payload":{"taskRef":"PR #184","taskStatus":"pendiente, necesita revisión","projectRef":"Proyecto Atlas"}
+}'
+# -> decision.kind: ASK_PERMISSION, reasoning ties both events together
+
+# 3) "Revísalo" — drafts the message (grab decision.id from step 2's response)
+curl -X POST http://localhost:4000/decisions/<decisionId>/prepare -H 'content-type: application/json' -d '{"deviceId":"telefono-diego"}'
+# -> decision.kind: EXECUTE, reasoning is now the drafted message
+
+# 4) "Avísale" / confirm — actually runs it (grab the new decision.id from step 3)
+curl -X POST http://localhost:4000/decisions/<decisionId>/execute -H 'content-type: application/json' -d '{"deviceId":"telefono-diego"}'
+
+curl http://localhost:4000/action-log   # what got executed
+curl http://localhost:4000/work-graph   # the resulting graph
+```
+
+Firing step 1 from one browser tab/device and watching step 2's card
+appear on a second tab connected to the same `/ws` is the multi-device
+"wow moment" from doc §24.
 
 Postgres runs locally via `docker-compose.yml` for now; `DATABASE_URL` in
 `.env.example` also accepts a Supabase connection string directly, but no

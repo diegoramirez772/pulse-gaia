@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { normalizeAndroidEvent } from "../adapters/android.js";
+import { normalizeWebEvent } from "../adapters/web.js";
 import { normalizeWindowsEvent } from "../adapters/windows.js";
 import { handleEvent, workGraphMemory } from "../agent-core/index.js";
 import { eventBus } from "../event-bus/index.js";
@@ -24,6 +25,14 @@ export async function eventRoutes(app: FastifyInstance) {
   app.post("/events/windows", async (req, reply) => {
     const body = incomingEventSchema.parse(req.body);
     const event = normalizeWindowsEvent(body);
+    eventBus.publish(event);
+    reply.send(await handleEvent(event));
+  });
+
+  // The Agent Surface's own text input (doc §8) — see adapters/web.ts.
+  app.post("/events/web", async (req, reply) => {
+    const body = incomingEventSchema.parse(req.body);
+    const event = normalizeWebEvent(body);
     eventBus.publish(event);
     reply.send(await handleEvent(event));
   });

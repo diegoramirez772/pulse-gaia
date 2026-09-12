@@ -1,10 +1,10 @@
 import { EventEmitter } from "node:events";
-import type { RawContextEvent } from "@pulse/context-schema";
+import type { RawContextEvent, SurfacePresentation } from "@pulse/context-schema";
 
 /**
  * EVENT BUS / CONTEXT LAYER (doc §31). Every OS Adapter publishes normalized
- * events here; the Context Engine is the only subscriber for now. A single
- * in-memory bus is enough for the hackathon prototype — swap for
+ * events here; every connected Agent Surface subscribes to presentations.
+ * A single in-memory bus is enough for the hackathon prototype — swap for
  * Postgres LISTEN/NOTIFY or a real queue once there's more than one process.
  */
 class ContextEventBus extends EventEmitter {
@@ -14,6 +14,14 @@ class ContextEventBus extends EventEmitter {
 
   onEvent(handler: (event: RawContextEvent) => void) {
     this.on("event", handler);
+  }
+
+  publishPresentation(presentation: SurfacePresentation) {
+    this.emit("presentation", presentation);
+  }
+
+  onPresentation(handler: (presentation: SurfacePresentation) => void) {
+    this.on("presentation", handler);
   }
 }
 
