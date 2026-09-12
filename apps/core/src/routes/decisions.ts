@@ -4,12 +4,16 @@ import { z } from "zod";
 import { draftMessage } from "../agent-core/actions.js";
 import { logAction, listActions } from "../agent-core/action-log.js";
 import { getDecision, saveDecision } from "../agent-core/decisions.js";
-import { workGraphMemory } from "../agent-core/memory.js";
+import { PROTOTYPE_IDENTITY_ID } from "../agent-core/identity.js";
+import * as workGraph from "../agent-core/memory.js";
 import { present, presentActionResult } from "../agent-surface/index.js";
 import { eventBus } from "../event-bus/index.js";
 import { isCapabilityAllowed } from "../context-firewall/index.js";
 
-const confirmBodySchema = z.object({ deviceId: z.string().default("unknown") });
+const confirmBodySchema = z.object({
+  deviceId: z.string().default("unknown"),
+  agentIdentityId: z.string().default(PROTOTYPE_IDENTITY_ID),
+});
 
 /**
  * The second half of the response cycle (doc §10, steps 7-9) — a card's
@@ -19,18 +23,19 @@ const confirmBodySchema = z.object({ deviceId: z.string().default("unknown") });
  */
 export async function decisionRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>("/decisions/:id/prepare", async (req, reply) => {
-    const decision = getDecision(req.params.id);
+    const decision = await getDecision(req.params.id);
     if (!decision) return reply.code(404).send({ error: "decision not found" });
     if (decision.kind !== "ASK_PERMISSION") {
       return reply.code(409).send({ error: `decision is ${decision.kind}, expected ASK_PERMISSION` });
     }
 
-    const { deviceId } = confirmBodySchema.parse(req.body ?? {});
-    if (!isCapabilityAllowed(deviceId, "message.prepare")) {
+    const { deviceId, agentIdentityId } = confirmBodySchema.parse(req.body ?? {});
+    if (!(await isCapabilityAllowed(agentIdentityId, deviceId, "message.prepare"))) {
       return reply.code(403).send({ error: "message.prepare is not granted for this device" });
     }
 
-    const draftedText = await draftMessage(decision, workGraphMemory.snapshot());
+    const graph = await workGraph.snapshot(agentIdentityId);
+    const draftedText = await draftMessage(decision, graph);
     const nextDecision = {
       id: randomUUID(),
       eventId: decision.eventId,
@@ -40,7 +45,7 @@ export async function decisionRoutes(app: FastifyInstance) {
       proposedCapabilityId: "message.send",
       createdAt: new Date().toISOString(),
     };
-    saveDecision(nextDecision);
+    await saveDecision(agentIdentityId, nextDecision);
 
     const presentation = present(nextDecision);
     eventBus.publishPresentation(presentation);
@@ -48,17 +53,17 @@ export async function decisionRoutes(app: FastifyInstance) {
   });
 
   app.post<{ Params: { id: string } }>("/decisions/:id/execute", async (req, reply) => {
-    const decision = getDecision(req.params.id);
+    const decision = await getDecision(req.params.id);
     if (!decision) return reply.code(404).send({ error: "decision not found" });
     if (decision.kind !== "EXECUTE") {
       return reply.code(409).send({ error: `decision is ${decision.kind}, expected EXECUTE` });
     }
 
-    const { deviceId } = confirmBodySchema.parse(req.body ?? {});
+    const { deviceId, agentIdentityId } = confirmBodySchema.parse(req.body ?? {});
     const capabilityKey = decision.proposedCapabilityId ?? "message.send";
 
-    if (!isCapabilityAllowed(deviceId, capabilityKey)) {
-      logAction({
+    if (!(await isCapabilityAllowed(agentIdentityId, deviceId, capabilityKey))) {
+      await logAction(agentIdentityId, {
         decisionId: decision.id,
         capabilityKey,
         deviceId,
@@ -68,7 +73,7 @@ export async function decisionRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: `${capabilityKey} is not granted for this device` });
     }
 
-    logAction({
+    await logAction(agentIdentityId, {
       decisionId: decision.id,
       capabilityKey,
       deviceId,
@@ -77,7 +82,7 @@ export async function decisionRoutes(app: FastifyInstance) {
     });
 
     const now = new Date().toISOString();
-    workGraphMemory.addEntities([
+    await workGraph.addEntities(agentIdentityId, [
       {
         id: randomUUID(),
         type: "message",
@@ -94,5 +99,7 @@ export async function decisionRoutes(app: FastifyInstance) {
     reply.send({ ok: true, presentation });
   });
 
-  app.get("/action-log", async () => listActions());
+  app.get<{ Querystring: { agentIdentityId?: string } }>("/action-log", async (req) =>
+    listActions(req.query.agentIdentityId ?? PROTOTYPE_IDENTITY_ID),
+  );
 }

@@ -28,6 +28,7 @@ describe("Context Engine resolve", () => {
         },
       ],
       relations: [],
+      asOf: "2026-09-12T11:00:00.000Z",
     };
 
     const result = resolve(

@@ -2,6 +2,7 @@ node_modules
 .turbo
 .git
 .env
-apps/surface-web
+apps/surface-web/node_modules
+apps/surface-web/dist
 docs
 adapters

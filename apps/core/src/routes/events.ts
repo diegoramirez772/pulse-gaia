@@ -3,7 +3,8 @@ import { z } from "zod";
 import { normalizeAndroidEvent } from "../adapters/android.js";
 import { normalizeWebEvent } from "../adapters/web.js";
 import { normalizeWindowsEvent } from "../adapters/windows.js";
-import { handleEvent, workGraphMemory } from "../agent-core/index.js";
+import { handleEvent, workGraph } from "../agent-core/index.js";
+import { PROTOTYPE_IDENTITY_ID } from "../agent-core/identity.js";
 import { eventBus } from "../event-bus/index.js";
 
 const incomingEventSchema = z.object({
@@ -40,6 +41,9 @@ export async function eventRoutes(app: FastifyInstance) {
     reply.send(result);
   });
 
-  // Demo helper (doc §21): lets the Agent Surface show the Work Graph live.
-  app.get("/work-graph", async () => workGraphMemory.snapshot());
+  // Demo helper (doc §21): lets the Agent Surface show the Work Graph live,
+  // scoped to whichever identity the surface is resolved as (see routes/auth.ts).
+  app.get<{ Querystring: { agentIdentityId?: string } }>("/work-graph", async (req) =>
+    workGraph.snapshot(req.query.agentIdentityId ?? PROTOTYPE_IDENTITY_ID),
+  );
 }

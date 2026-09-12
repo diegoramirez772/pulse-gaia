@@ -70,16 +70,28 @@ mocked responses) — this is the exact demo script from the master doc:
 - **Multi-device sync** — real: every decision's presentation is broadcast
   over `/ws` to every connected surface, not just the one that triggered it.
 
+**Real, and multi-tenant now:**
+
+- **Identity** — no more single hardcoded user. `GET /api/auth/handoff`
+  verifies a `handeia_token` (HS256, `handeia-auth.ts`) from a real Handeia
+  space handoff and resolves the real `sub` as the `agentIdentityId` — see
+  [[Pulse Gaia — Plan Gandia 7 Developers (Handeia)]] for the full flow.
+  Falls back to a fixed `prototype-identity` for local dev/testing without
+  a handoff (every curl example below still works unchanged).
+- **Persistence** — Work Graph, decisions, action log and Context Firewall
+  grants all persist to Supabase (`agent-core/memory.ts`, `decisions.ts`,
+  `action-log.ts`, `context-firewall/index.ts`) when `SUPABASE_URL` +
+  `SUPABASE_SERVICE_ROLE_KEY` are set, scoped per `agentIdentityId` — see
+  [[Pulse Gaia — Plan de Base de Datos]] for the schema. **Falls back to
+  in-memory storage (lost on restart) when unset** — local dev needs no
+  database at all.
+- **Context Firewall** — deny-by-default per (identity, device):
+  `POST /devices/:deviceId/grants` explicitly grants or revokes a
+  capability; both incoming context and simulated actions are checked.
+
 **Deliberately still stub or deferred**, and why that's fine for a
 hackathon (doc §22, §25 explicitly allow this):
 
-- **Context Firewall** — real, in-memory per-device grants. It starts
-  deny-by-default: `POST /devices/:deviceId/grants` explicitly grants or
-  revokes a capability, and both incoming context and simulated actions are
-  checked. This is intentionally not durable or multi-user until identity and
-  storage exist; restart the Core and re-grant permissions.
-- Identity (`agent-core/identity.ts`) — single hardcoded prototype user, no
-  real multi-user auth.
 - Android/Windows adapters — normalization functions + HTTP routes only
   (`POST /events/android`, `POST /events/windows`, `POST /events/web`), no
   native clients. The doc's own guidance: demo real depth on one path,
@@ -107,11 +119,14 @@ stub above says so at the call site.
 ## Running it locally
 
 ```bash
-cp .env.example .env        # fill in OPENAI_API_KEY at minimum
-docker compose up -d        # local Postgres
+cp .env.example .env        # OPENAI_API_KEY/SUPABASE_*/HANDEIA_* are all optional locally —
+                             # every one of them has a working fallback, see Status above
 pnpm install
 pnpm dev                    # runs core (:4000) + surface-web (:5173) via turbo
 ```
+
+No database is required for local dev — leave `SUPABASE_URL` unset and
+everything runs in memory, exactly like before persistence was added.
 
 Health check: `curl http://localhost:4000/health`.
 
@@ -157,37 +172,38 @@ appear on a second tab connected to the same `/ws` is the multi-device
 
 ## Deploying the demo
 
-The repository is ready for a split deploy: deploy the root `Dockerfile` as
-the Core on Railway or Render, then deploy the root project to Vercel (the
-included `vercel.json` builds `apps/surface-web`). This needs the owner's
-Railway/Render and Vercel accounts; no hosted service is created by this repo.
+Single deploy target now, not split: the root `Dockerfile` builds
+`apps/surface-web` (static, baked-in `VITE_CORE_*` build args) **and**
+`apps/core` (Fastify), and the Core serves the surface's static build
+itself (`server.ts`) — one Railway/Render service, one public URL. This
+matters for the Handeia integration: its proxy resolves a capability's
+slug to a single `backend_url` and reverse-proxies straight to it (see
+[[Pulse Gaia — Plan Gandia 7 Developers (Handeia)]] §1) — two separate
+deploys would need coordinating two URLs for no benefit.
 
-Set these variables on the **Core** service:
-
-```bash
-OPENAI_API_KEY=                 # optional; fallback remains deterministic without it
-CORS_ORIGIN=https://<surface>.vercel.app
-PORT=4000                       # Railway/Render normally provide this themselves
-```
-
-Set these build-time variables on the **Vercel** project, replacing the
-domains with the deployed Core's public HTTPS URL:
+Build args (baked into the static bundle, so they're build-time, not
+runtime — set the deployed URL *before* the first build):
 
 ```bash
-VITE_CORE_HTTP_URL=https://<core-domain>
-VITE_CORE_WS_URL=wss://<core-domain>/ws
+VITE_CORE_HTTP_URL=https://<this-same-service's-public-url>
+VITE_CORE_WS_URL=wss://<this-same-service's-public-url>/ws
 ```
 
-After deployment, open `<core-domain>/health`, install the Vercel PWA on the
-phone, and run the four grant calls plus the scenario above against the Core
-domain. The Core's `CORS_ORIGIN` must exactly match the PWA origin. This is
-the required live-device validation step; it cannot be represented by two
-local browser tabs.
+Runtime env vars on the service:
 
-Postgres runs locally via `docker-compose.yml` for now; `DATABASE_URL` in
-`.env.example` also accepts a Supabase connection string directly, but no
-Supabase project has been provisioned — creating one is a separate,
-explicit step (it's a hosted resource, not local setup).
+```bash
+OPENAI_API_KEY=                    # optional; fallback stays deterministic without it
+SUPABASE_URL=                      # from your teammate's Supabase project
+SUPABASE_SERVICE_ROLE_KEY=         # ditto — falls back to in-memory (lost on restart) if unset
+HANDEIA_CAPABILITY_KEY_SECRET=     # the key_secret Gandia-7 generated for PULSE's capability
+CORS_ORIGIN=https://pulse.handeia.com   # or whatever slug ends up assigned
+PORT=4000                          # Railway/Render usually set this themselves
+```
+
+After deployment: `curl <url>/health`, then the grant + scenario curls
+above against `<url>` instead of `localhost:4000`. Full Handeia handoff
+end-to-end test needs the `developer_capabilities`/`developer_api_keys`
+rows pointed at this URL — see the Gandia 7 Developers plan doc.
 
 ## Build plan (180 min, doc §23)
 

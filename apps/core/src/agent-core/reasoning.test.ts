@@ -45,6 +45,7 @@ describe("Agent Core heuristic reasoning", () => {
           createdAt: "2026-09-12T12:00:00.000Z",
         },
       ],
+      asOf: "2026-09-12T12:00:00.000Z",
     };
 
     const result = decideWithHeuristics([blockedTask], [], graph);
@@ -66,6 +67,7 @@ describe("Agent Core heuristic reasoning", () => {
           createdAt: "2026-09-12T12:00:00.000Z",
         },
       ],
+      asOf: "2026-09-12T12:00:00.000Z",
     };
     const unrelated: ContextEntity = {
       ...blockedTask,

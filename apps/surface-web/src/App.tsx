@@ -3,7 +3,7 @@ import type { SurfacePresentation, WorkGraphSnapshot } from "@pulse/context-sche
 
 const CORE_HTTP_URL = import.meta.env.VITE_CORE_HTTP_URL ?? "http://localhost:4000";
 const CORE_WS_URL = import.meta.env.VITE_CORE_WS_URL ?? "ws://localhost:4000/ws";
-const AGENT_IDENTITY_ID = "prototype-identity";
+const PROTOTYPE_IDENTITY_ID = "prototype-identity";
 
 type ConnectionState = "connecting" | "online" | "offline";
 
@@ -52,6 +52,27 @@ function getDeviceId(): string {
 }
 
 /**
+ * Real identity arrives via the Handeia handoff (routes/auth.ts redirects
+ * to `/?agentIdentityId=...`), the same way `deviceId` is a per-viewer
+ * localStorage value — no cookies/sessions needed. Falls back to the
+ * hardcoded prototype identity for local dev/standalone testing.
+ */
+function getAgentIdentityId(): string {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromHandoff = params.get("agentIdentityId");
+    if (fromHandoff) {
+      localStorage.setItem("pulse-agent-identity-id", fromHandoff);
+      window.history.replaceState({}, "", window.location.pathname);
+      return fromHandoff;
+    }
+    return localStorage.getItem("pulse-agent-identity-id") ?? PROTOTYPE_IDENTITY_ID;
+  } catch {
+    return PROTOTYPE_IDENTITY_ID;
+  }
+}
+
+/**
  * Agent Surface prototype (doc §7-8): a minimal, contextual presence, not a
  * second chat window. Renders whatever the Agent Core's last decision
  * turned into — card / text / action — and lets the user drive the same
@@ -67,6 +88,7 @@ export function App() {
   const [isListening, setIsListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const deviceIdRef = useRef(getDeviceId());
+  const agentIdentityIdRef = useRef(getAgentIdentityId());
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
   const speechRecognitionSupported =
@@ -93,7 +115,7 @@ export function App() {
     const poll = setInterval(refreshWorkGraph, 5000);
 
     function refreshWorkGraph() {
-      fetch(`${CORE_HTTP_URL}/work-graph`)
+      fetch(`${CORE_HTTP_URL}/work-graph?agentIdentityId=${encodeURIComponent(agentIdentityIdRef.current)}`)
         .then((res) => res.json())
         .then(setWorkGraph)
         .catch(() => {});
@@ -124,7 +146,7 @@ export function App() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          agentIdentityId: AGENT_IDENTITY_ID,
+          agentIdentityId: agentIdentityIdRef.current,
           deviceId: deviceIdRef.current,
           kind,
           payload: { text },
@@ -182,7 +204,7 @@ export function App() {
       const res = await fetch(`${CORE_HTTP_URL}/decisions/${presentation.decisionId}/${step}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deviceId: deviceIdRef.current }),
+        body: JSON.stringify({ deviceId: deviceIdRef.current, agentIdentityId: agentIdentityIdRef.current }),
       });
       const data = await res.json();
       if (data.presentation) setPresentation(data.presentation);
@@ -197,7 +219,7 @@ export function App() {
         <header>
           <span className={`status-dot ${coreStatus}`} />
           <span>Agent Core: {coreStatus}</span>
-          <span className="device-id">{deviceIdRef.current}</span>
+          <span className="device-id">{agentIdentityIdRef.current} · {deviceIdRef.current}</span>
         </header>
 
         <p className="headline">{presentation?.headline ?? "Nada requiere tu atención por ahora."}</p>
