@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import cookiePlugin from "@fastify/cookie";
 import staticPlugin from "@fastify/static";
 import websocketPlugin from "@fastify/websocket";
 import Fastify from "fastify";
@@ -43,12 +44,18 @@ export async function buildServer() {
       reply.header("Access-Control-Allow-Origin", origin);
       reply.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       reply.header("Access-Control-Allow-Headers", "Content-Type");
+      // The identity cookie only crosses origins with this — needed for
+      // local dev (surface on :5173, core on :4000); in production both
+      // are served from the same origin (see the static block below) and
+      // this is moot.
+      reply.header("Access-Control-Allow-Credentials", "true");
       reply.header("Vary", "Origin");
     }
 
     if (request.method === "OPTIONS") return reply.code(204).send();
   });
 
+  await app.register(cookiePlugin);
   await app.register(websocketPlugin);
   await app.register(healthRoutes);
   await app.register(authRoutes);

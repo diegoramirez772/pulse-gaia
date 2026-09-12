@@ -73,11 +73,19 @@ mocked responses) — this is the exact demo script from the master doc:
 **Real, and multi-tenant now:**
 
 - **Identity** — no more single hardcoded user. `GET /api/auth/handoff`
-  verifies a `handeia_token` (HS256, `handeia-auth.ts`) from a real Handeia
-  space handoff and resolves the real `sub` as the `agentIdentityId` — see
+  verifies a `handeia_token` via the real `@vaia-lab/sdk` (same one Nexus
+  itself uses in `app/api/auth/handoff/route.ts`) and puts it in an
+  **httpOnly cookie** — never in the URL, matching Nexus's own pattern
+  (a URL ends up in logs/history/Referer headers, a cookie doesn't). Every
+  later request **re-verifies the cookie's signature itself** rather than
+  trusting that it exists (`agent-core/session.ts`) — a request body can
+  still claim an `agentIdentityId` for curl-based testing, but a valid
+  cookie always wins over it, so a browser session can't be spoofed by
+  editing the request. See
   [[Pulse Gaia — Plan Gandia 7 Developers (Handeia)]] for the full flow.
-  Falls back to a fixed `prototype-identity` for local dev/testing without
-  a handoff (every curl example below still works unchanged).
+  Falls back to a fixed `prototype-identity` when there's no cookie at all
+  (local dev/testing without a handoff — every curl example below still
+  works unchanged).
 - **Persistence** — Work Graph, decisions, action log and Context Firewall
   grants all persist to Supabase (`agent-core/memory.ts`, `decisions.ts`,
   `action-log.ts`, `context-firewall/index.ts`) when `SUPABASE_URL` +

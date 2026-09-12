@@ -4,7 +4,7 @@ import { z } from "zod";
 import { draftMessage } from "../agent-core/actions.js";
 import { logAction, listActions } from "../agent-core/action-log.js";
 import { getDecision, saveDecision } from "../agent-core/decisions.js";
-import { PROTOTYPE_IDENTITY_ID } from "../agent-core/identity.js";
+import { resolveAgentIdentityId } from "../agent-core/session.js";
 import * as workGraph from "../agent-core/memory.js";
 import { present, presentActionResult } from "../agent-surface/index.js";
 import { eventBus } from "../event-bus/index.js";
@@ -12,14 +12,16 @@ import { isCapabilityAllowed } from "../context-firewall/index.js";
 
 const confirmBodySchema = z.object({
   deviceId: z.string().default("unknown"),
-  agentIdentityId: z.string().default(PROTOTYPE_IDENTITY_ID),
+  agentIdentityId: z.string().optional(),
 });
 
 /**
  * The second half of the response cycle (doc §10, steps 7-9) — a card's
  * buttons land here. Two steps mirror the doc §9 script exactly:
  * "Revísalo" (ASK_PERMISSION → drafts a message, becomes EXECUTE) then
- * "Avísale"/confirm (EXECUTE → actually runs, gets logged).
+ * "Avísale"/confirm (EXECUTE → actually runs, gets logged). Identity comes
+ * from the verified handoff cookie (see agent-core/session.ts); the body
+ * field is only a fallback for the curl-based demo flow.
  */
 export async function decisionRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>("/decisions/:id/prepare", async (req, reply) => {
@@ -29,8 +31,9 @@ export async function decisionRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: `decision is ${decision.kind}, expected ASK_PERMISSION` });
     }
 
-    const { deviceId, agentIdentityId } = confirmBodySchema.parse(req.body ?? {});
-    if (!(await isCapabilityAllowed(agentIdentityId, deviceId, "message.prepare"))) {
+    const body = confirmBodySchema.parse(req.body ?? {});
+    const agentIdentityId = await resolveAgentIdentityId(req, body.agentIdentityId);
+    if (!(await isCapabilityAllowed(agentIdentityId, body.deviceId, "message.prepare"))) {
       return reply.code(403).send({ error: "message.prepare is not granted for this device" });
     }
 
@@ -59,14 +62,15 @@ export async function decisionRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: `decision is ${decision.kind}, expected EXECUTE` });
     }
 
-    const { deviceId, agentIdentityId } = confirmBodySchema.parse(req.body ?? {});
+    const body = confirmBodySchema.parse(req.body ?? {});
+    const agentIdentityId = await resolveAgentIdentityId(req, body.agentIdentityId);
     const capabilityKey = decision.proposedCapabilityId ?? "message.send";
 
-    if (!(await isCapabilityAllowed(agentIdentityId, deviceId, capabilityKey))) {
+    if (!(await isCapabilityAllowed(agentIdentityId, body.deviceId, capabilityKey))) {
       await logAction(agentIdentityId, {
         decisionId: decision.id,
         capabilityKey,
-        deviceId,
+        deviceId: body.deviceId,
         result: "denied",
         detail: "Denied by context firewall: capability is not granted for this device.",
       });
@@ -76,7 +80,7 @@ export async function decisionRoutes(app: FastifyInstance) {
     await logAction(agentIdentityId, {
       decisionId: decision.id,
       capabilityKey,
-      deviceId,
+      deviceId: body.deviceId,
       result: "success",
       detail: decision.reasoning,
     });
@@ -88,7 +92,7 @@ export async function decisionRoutes(app: FastifyInstance) {
         type: "message",
         label: `Mensaje enviado: ${decision.reasoning.slice(0, 40)}${decision.reasoning.length > 40 ? "..." : ""}`,
         attributes: { text: decision.reasoning, sentVia: capabilityKey },
-        sourceDeviceId: deviceId,
+        sourceDeviceId: body.deviceId,
         createdAt: now,
         updatedAt: now,
       },
@@ -100,6 +104,6 @@ export async function decisionRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Querystring: { agentIdentityId?: string } }>("/action-log", async (req) =>
-    listActions(req.query.agentIdentityId ?? PROTOTYPE_IDENTITY_ID),
+    listActions(await resolveAgentIdentityId(req, req.query.agentIdentityId)),
   );
 }

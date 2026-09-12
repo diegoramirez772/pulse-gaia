@@ -52,23 +52,33 @@ function getDeviceId(): string {
 }
 
 /**
- * Real identity arrives via the Handeia handoff (routes/auth.ts redirects
- * to `/?agentIdentityId=...`), the same way `deviceId` is a per-viewer
- * localStorage value — no cookies/sessions needed. Falls back to the
- * hardcoded prototype identity for local dev/standalone testing.
+ * Real auth is an httpOnly cookie now (routes/auth.ts, agent-core/session.ts
+ * — same "revalidate the signature every request" pattern Nexus uses), not
+ * this. `agentIdentityId` here is only a fallback the server accepts when
+ * there's no valid cookie (curl-based demo/dev testing) — never trusted on
+ * its own for anything the Context Firewall or Work Graph gate.
  */
 function getAgentIdentityId(): string {
   try {
-    const params = new URLSearchParams(window.location.search);
-    const fromHandoff = params.get("agentIdentityId");
-    if (fromHandoff) {
-      localStorage.setItem("pulse-agent-identity-id", fromHandoff);
-      window.history.replaceState({}, "", window.location.pathname);
-      return fromHandoff;
-    }
     return localStorage.getItem("pulse-agent-identity-id") ?? PROTOTYPE_IDENTITY_ID;
   } catch {
     return PROTOTYPE_IDENTITY_ID;
+  }
+}
+
+/** Display-only — the handoff redirect passes `?name=` purely to greet the user. */
+function getDisplayName(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const name = params.get("name");
+    if (name) {
+      sessionStorage.setItem("pulse-display-name", name);
+      window.history.replaceState({}, "", window.location.pathname);
+      return name;
+    }
+    return sessionStorage.getItem("pulse-display-name");
+  } catch {
+    return null;
   }
 }
 
@@ -89,6 +99,7 @@ export function App() {
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const deviceIdRef = useRef(getDeviceId());
   const agentIdentityIdRef = useRef(getAgentIdentityId());
+  const displayNameRef = useRef(getDisplayName());
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
   const speechRecognitionSupported =
@@ -115,7 +126,9 @@ export function App() {
     const poll = setInterval(refreshWorkGraph, 5000);
 
     function refreshWorkGraph() {
-      fetch(`${CORE_HTTP_URL}/work-graph?agentIdentityId=${encodeURIComponent(agentIdentityIdRef.current)}`)
+      fetch(`${CORE_HTTP_URL}/work-graph?agentIdentityId=${encodeURIComponent(agentIdentityIdRef.current)}`, {
+        credentials: "include",
+      })
         .then((res) => res.json())
         .then(setWorkGraph)
         .catch(() => {});
@@ -144,6 +157,7 @@ export function App() {
     try {
       const res = await fetch(`${CORE_HTTP_URL}/events/web`, {
         method: "POST",
+        credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           agentIdentityId: agentIdentityIdRef.current,
@@ -203,6 +217,7 @@ export function App() {
       const step = capabilityKey === "message.send" ? "execute" : "prepare";
       const res = await fetch(`${CORE_HTTP_URL}/decisions/${presentation.decisionId}/${step}`, {
         method: "POST",
+        credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ deviceId: deviceIdRef.current, agentIdentityId: agentIdentityIdRef.current }),
       });
@@ -219,7 +234,9 @@ export function App() {
         <header>
           <span className={`status-dot ${coreStatus}`} />
           <span>Agent Core: {coreStatus}</span>
-          <span className="device-id">{agentIdentityIdRef.current} · {deviceIdRef.current}</span>
+          <span className="device-id">
+            {displayNameRef.current ?? agentIdentityIdRef.current} · {deviceIdRef.current}
+          </span>
         </header>
 
         <p className="headline">{presentation?.headline ?? "Nada requiere tu atención por ahora."}</p>
